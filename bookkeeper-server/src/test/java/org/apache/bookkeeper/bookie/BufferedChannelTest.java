@@ -239,4 +239,61 @@ public class BufferedChannelTest {
         channel.read(dest, 0L, 10);
     }
 
+    // --- TEST PER MUTATION TESTING ---
+
+    @Test
+    public void testWrite_VerifyPositionUpdate_KillsMutant() throws IOException {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+        long initialPos = channel.position();
+
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+        channel.write(data);
+
+        Assert.assertEquals("La posizione deve avanzare dopo la scrittura",
+                initialPos + 10, channel.position());
+    }
+
+    @Test
+    public void testWrite_UnpersistedBytesBound_ExactBoundary_KillsMutant() throws IOException {
+        BufferedChannel specialChannel = new BufferedChannel(allocator, fileChannelMock, 1000, 10L);
+
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+
+        specialChannel.write(data);
+
+        verify(fileChannelMock, times(1)).write(any(ByteBuffer.class));
+    }
+
+    @Test
+    public void testRead_Overlap_ExactBoundaries_KillsMutants() throws IOException {
+        when(fileChannelMock.position()).thenReturn(100L);
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+
+        when(fileChannelMock.read(any(ByteBuffer.class), eq(0L))).thenAnswer(inv -> {
+            ByteBuffer buf = inv.getArgument(0);
+            buf.put("ABCDE".getBytes());
+            return 5;
+        });
+
+        ByteBuf dest1 = Unpooled.buffer(5);
+        channel.read(dest1, 0L, 5);
+
+        when(fileChannelMock.read(any(ByteBuffer.class), anyLong()))
+                .thenThrow(new RuntimeException("MUTANT KILLED: Disk access detected"));
+
+        ByteBuf dest2 = Unpooled.buffer(1);
+        try {
+            channel.read(dest2, 0L, 1);
+        } catch (RuntimeException e) {
+            if (e.getMessage().equals("MUTANT KILLED: Disk access detected")) {
+                Assert.fail("Il test ha tentato di accedere al disco");
+            }
+            throw e;
+        }
+
+        Assert.assertEquals((byte)'A', dest2.readByte());
+    }
+
 }
