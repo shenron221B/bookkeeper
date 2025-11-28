@@ -1424,5 +1424,57 @@
         <UBUNTU_SECURITY_MIRROR>${env.UBUNTU_SECURITY_MIRROR}</UBUNTU_SECURITY_MIRROR>
       </properties>
     </profile>
+    <profile>
+      <id>jacoco</id> <build>
+      <plugins>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>0.8.11</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>prepare-agent</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>report</id>
+              <phase>test</phase>
+              <goals>
+                <goal>report</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </build>
+    </profile>
+    <profile>
+      <id>mutation-testing</id> <build>
+      <plugins>
+        <plugin>
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-maven</artifactId>
+          <version>1.15.3</version>
+          <configuration>
+            <targetClasses>
+              <param>org.apache.bookkeeper.meta.LedgerLayout</param>
+            </targetClasses>
+            <targetTests>
+              <param>org.apache.bookkeeper.meta.LedgerLayoutTest</param>
+            </targetTests>
+          </configuration>
+          <executions>
+            <execution>
+              <id>mutation-coverage</id>
+              <goals>
+                <goal>mutationCoverage</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </build>
+    </profile>
   </profiles>
 </project>

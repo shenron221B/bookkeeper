@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.client.LedgerHandle;
 import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.apache.bookkeeper.test.BookKeeperClusterTestCase;
+import org.apache.bookkeeper_old.test.BookKeeperClusterTestCase;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
