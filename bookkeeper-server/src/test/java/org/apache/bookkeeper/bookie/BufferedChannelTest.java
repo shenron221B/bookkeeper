@@ -180,4 +180,63 @@ public class BufferedChannelTest {
         for(int i=5; i<10; i++) Assert.assertEquals((byte)'B', content[i]);
     }
 
+    // --- TEST AGGIUNTIVI ---
+
+    @Test
+    public void testWrite_UnpersistedBytesBound() throws IOException {
+        BufferedChannel specialChannel = new BufferedChannel(allocator, fileChannelMock, 1000, 10L);
+
+        ByteBuf data = Unpooled.buffer(20);
+        data.writeBytes(new byte[20]);
+
+        specialChannel.write(data);
+        verify(fileChannelMock, atLeastOnce()).write(any(ByteBuffer.class));
+    }
+
+    @Test(expected = IOException.class)
+    public void testRead_PastEOF_InBuffer() throws IOException {
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+        bufferedChannel.write(data);
+
+        ByteBuf dest = Unpooled.buffer(1);
+        bufferedChannel.read(dest, 10L, 1);
+    }
+
+    @Test(expected = IOException.class)
+    public void testRead_ShortRead_FromDisk() throws IOException {
+        long posToRead = 0L;
+
+        BufferedChannel diskChannel = new BufferedChannel(allocator, fileChannelMock, 100, 100L);
+
+        when(fileChannelMock.read(any(ByteBuffer.class), eq(posToRead))).thenReturn(0);
+
+        ByteBuf dest = Unpooled.buffer(10);
+
+        diskChannel.read(dest, posToRead, 10);
+    }
+
+    @Test
+    public void testWrite_UnpersistedBytes_BelowBound() throws IOException {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 1000L);
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+
+        channel.write(data);
+
+        verify(fileChannelMock, never()).write(any(ByteBuffer.class));
+    }
+
+    @Test
+    public void testRead_WriteBufferNull_DefensivePath() throws Exception {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+
+        java.lang.reflect.Field wbField = BufferedChannel.class.getDeclaredField("writeBuffer");
+        wbField.setAccessible(true);
+        wbField.set(channel, null);
+
+        ByteBuf dest = Unpooled.buffer(10);
+        channel.read(dest, 0L, 10);
+    }
+
 }
