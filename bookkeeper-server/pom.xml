@@ -321,6 +321,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <!-- <argLine>@{argLine}</argLine> //-->
+          <argLine>@{argLine}</argLine>
           <trimStackTrace>false</trimStackTrace>
           <properties>
             <property>
