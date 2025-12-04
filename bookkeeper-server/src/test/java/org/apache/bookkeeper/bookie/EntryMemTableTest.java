@@ -4,15 +4,17 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.stats.NullStatsLogger;
+import org.apache.bookkeeper.stats.StatsLogger;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
-
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import java.util.concurrent.TimeUnit;
+
 
 public class EntryMemTableTest {
 
@@ -182,6 +184,152 @@ public class EntryMemTableTest {
         java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    // --- TEST PER MUTATION TESTING ---
+
+    @Test
+    public void T12_testStats_And_AddEntryReturnValue() throws Exception {
+        StatsLogger mockStatsLogger = mock(StatsLogger.class);
+
+        org.apache.bookkeeper.stats.OpStatsLogger universalOpLogger = mock(org.apache.bookkeeper.stats.OpStatsLogger.class);
+        org.apache.bookkeeper.stats.Counter universalCounter = mock(org.apache.bookkeeper.stats.Counter.class);
+
+        when(mockStatsLogger.getOpStatsLogger(anyString())).thenReturn(universalOpLogger);
+        when(mockStatsLogger.getCounter(anyString())).thenReturn(universalCounter);
+
+        EntryMemTable localMemTable = new EntryMemTable(conf, checkpointSource, mockStatsLogger);
+
+        byte[] data = new byte[10];
+        long size = localMemTable.addEntry(1L, 1L, ByteBuffer.wrap(data), cacheCallback);
+
+        assertTrue("AddEntry deve ritornare una dimensione positiva", size > 0);
+
+        verify(universalOpLogger, atLeastOnce()).registerSuccessfulEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+
+        verify(universalOpLogger, never()).registerFailedEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+
+        reset(universalOpLogger);
+        localMemTable.getEntry(1L, 1L);
+
+        verify(universalOpLogger, atLeastOnce()).registerSuccessfulEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+
+        java.util.concurrent.Semaphore mockSem = mock(java.util.concurrent.Semaphore.class);
+        setField(localMemTable, "skipListSemaphore", mockSem);
+        when(mockSem.tryAcquire(anyInt())).thenReturn(false);
+
+        localMemTable.addEntry(2L, 2L, ByteBuffer.wrap(data), cacheCallback);
+
+        verify(universalCounter, atLeastOnce()).inc();
+        verify(universalOpLogger, atLeastOnce()).registerSuccessfulEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+    }
+
+    @Test
+    public void T13_testFlush_Failure_Affects_AddEntry() throws Exception {
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+        memTable.snapshot();
+
+        doThrow(new IOException("Flush Failed")).when(flusher).process(anyLong(), anyLong(), any());
+
+        try {
+            memTable.flush(flusher);
+        } catch (IOException e) {
+        }
+
+        reset(cacheCallback);
+        memTable.addEntry(2L, 2L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+
+        verify(cacheCallback, times(1)).onSizeLimitReached(any());
+    }
+
+    @Test
+    public void T14_testFlush_Success_Restores_AddEntry() throws Exception {
+        T13_testFlush_Failure_Affects_AddEntry();
+
+        memTable.addEntry(3L, 3L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+        memTable.snapshot();
+        doNothing().when(flusher).process(anyLong(), anyLong(), any());
+
+        memTable.flush(flusher);
+
+        reset(cacheCallback);
+        memTable.addEntry(4L, 4L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+
+        verify(cacheCallback, never()).onSizeLimitReached(any());
+    }
+
+    @Test
+    public void T15_testAdd_SizeLimit_ExactBoundary() throws Exception {
+        long limit = 100L;
+        when(conf.getSkipListSizeLimit()).thenReturn(limit);
+        memTable = new EntryMemTable(conf, checkpointSource, new NullStatsLogger());
+
+        java.util.concurrent.Semaphore openSemaphore = new java.util.concurrent.Semaphore(1000);
+        setField(memTable, "skipListSemaphore", openSemaphore);
+
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+
+        java.lang.reflect.Field sizeField = EntryMemTable.class.getDeclaredField("size");
+        sizeField.setAccessible(true);
+        java.util.concurrent.atomic.AtomicLong sizeAtom = (java.util.concurrent.atomic.AtomicLong) sizeField.get(memTable);
+        sizeAtom.set(limit);
+
+        reset(cacheCallback);
+
+        memTable.addEntry(1L, 2L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+
+        verify(cacheCallback, times(1)).onSizeLimitReached(any());
+    }
+
+    @Test
+    public void T16_testAdd_DuplicateEntry_ReleasesSemaphore() throws Exception {
+        java.util.concurrent.Semaphore realSemaphore = new java.util.concurrent.Semaphore(20);
+        setField(memTable, "skipListSemaphore", realSemaphore);
+
+        ByteBuffer entry = ByteBuffer.wrap(new byte[10]);
+
+        memTable.addEntry(1L, 1L, entry.duplicate(), cacheCallback);
+        assertEquals(10, realSemaphore.availablePermits());
+
+        memTable.addEntry(1L, 1L, entry.duplicate(), cacheCallback);
+        assertEquals("Permessi devono essere restituiti", 10, realSemaphore.availablePermits());
+    }
+
+    @Test
+    public void T17_testFlush_ReturnsCorrectSize() throws Exception {
+        byte[] data = new byte[100];
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(data), cacheCallback);
+        memTable.snapshot();
+
+        long flushed = memTable.flush(flusher);
+
+        assertTrue("Flush deve ritornare la dimensione dei dati flushati", flushed > 0);
+    }
+
+    @Test
+    public void T18_testFailureStats_AreRecorded() throws Exception {
+        StatsLogger mockStatsLogger = mock(StatsLogger.class);
+        org.apache.bookkeeper.stats.OpStatsLogger putStats = mock(org.apache.bookkeeper.stats.OpStatsLogger.class);
+        org.apache.bookkeeper.stats.Counter anyCounter = mock(org.apache.bookkeeper.stats.Counter.class);
+
+        when(mockStatsLogger.getOpStatsLogger(anyString())).thenReturn(putStats);
+        when(mockStatsLogger.getCounter(anyString())).thenReturn(anyCounter);
+
+        SkipListArena mockAlloc = mock(SkipListArena.class);
+        when(mockAlloc.allocateBytes(anyInt())).thenThrow(new RuntimeException("Boom"));
+
+        EntryMemTable failTable = new EntryMemTable(conf, checkpointSource, mockStatsLogger);
+        setField(failTable, "allocator", mockAlloc);
+
+        try {
+            failTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+            fail("Doveva lanciare RuntimeException");
+        } catch (RuntimeException e) {
+            // Expected
+        }
+
+        Class<?> timeUnitClass = Class.forName("java.util.concurrent.TimeUnit");
+        verify(putStats, times(1)).registerFailedEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
     }
 
 }
