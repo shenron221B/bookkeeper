@@ -24,7 +24,7 @@ jobs:
           cache: maven
 
       - name: Generate PIT Mutation Testing Report
-        run: mvn clean verify -P mutation-testing
+        run: mvn clean verify -P mutation-testing -DskipTests=false
 
       - name: Upload PIT Mutation Testing Report
         uses: actions/upload-artifact@v4
