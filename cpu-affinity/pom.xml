@@ -214,7 +214,7 @@
             <artifactId>nar-maven-plugin</artifactId>
             <extensions>true</extensions>
             <configuration>
-              <runtime>${nar.runtime}</runtime>
+              <skip>true</skip>    <runtime>${nar.runtime}</runtime>
               <output>cpu-affinity</output>
               <libraries>
                 <library>
