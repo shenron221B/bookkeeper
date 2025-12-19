@@ -182,4 +182,27 @@ public class BufferedChannelTest {
         Assert.assertEquals("Buffer interno deve avere i restanti 50 byte", 50, bufferedChannel.getNumOfBytesInWriteBuffer());
     }
 
+    // test aggiuntivi (JaCoCo)
+
+    @Test
+    public void T10_testWrite_UnpersistedBytesBound() throws IOException {
+        BufferedChannel specialChannel = new BufferedChannel(allocator, fileChannelMock, 1000, 10L);
+
+        ByteBuf data = Unpooled.buffer(20);
+        data.writeBytes(new byte[20]);
+
+        specialChannel.write(data);
+        verify(fileChannelMock, atLeastOnce()).write(any(ByteBuffer.class));
+    }
+
+    @Test(expected = IOException.class)
+    public void T11_testRead_PastEOF_InBuffer() throws IOException {
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+        bufferedChannel.write(data);
+
+        ByteBuf dest = Unpooled.buffer(1);
+        bufferedChannel.read(dest, 10L, 1);
+    }
+
 }
