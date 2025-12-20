@@ -228,4 +228,34 @@ public class BufferedChannelTest {
         channel.read(dest, 0L, 10);
     }
 
+    @Test
+    public void T14_testRead_ComplexBranches_Coverage() throws Exception {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+        ByteBuf dest = Unpooled.buffer(1);
+
+        java.lang.reflect.Field wbPosField = BufferedChannel.class.getDeclaredField("writeBufferStartPosition");
+        wbPosField.setAccessible(true);
+        java.util.concurrent.atomic.AtomicLong wbPos = (java.util.concurrent.atomic.AtomicLong) wbPosField.get(channel);
+        wbPos.set(1000L);
+
+        java.lang.reflect.Field rbField = BufferedChannel.class.getSuperclass().getDeclaredField("readBuffer");
+        rbField.setAccessible(true);
+        ByteBuf readBuf = (ByteBuf) rbField.get(channel);
+        readBuf.clear();
+        readBuf.writeBytes(new byte[10]);
+
+        when(fileChannelMock.read(any(ByteBuffer.class), eq(20L))).thenReturn(1);
+
+        channel.read(dest, 20L, 1);
+        java.lang.reflect.Field wbField = BufferedChannel.class.getDeclaredField("writeBuffer");
+        wbField.setAccessible(true);
+        wbField.set(channel, null);
+        wbPos.set(100L);
+
+        when(fileChannelMock.read(any(ByteBuffer.class), eq(0L))).thenReturn(1);
+
+        dest.clear();
+        channel.read(dest, 0L, 1);
+    }
+
 }
