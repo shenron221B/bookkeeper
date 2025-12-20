@@ -205,4 +205,27 @@ public class BufferedChannelTest {
         bufferedChannel.read(dest, 10L, 1);
     }
 
+    @Test
+    public void T12_testWrite_UnpersistedBytes_BelowBound() throws IOException {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 1000L);
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+
+        channel.write(data);
+
+        verify(fileChannelMock, never()).write(any(ByteBuffer.class));
+    }
+
+    @Test
+    public void T13_testRead_WriteBufferNull_DefensivePath() throws Exception {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+
+        java.lang.reflect.Field wbField = BufferedChannel.class.getDeclaredField("writeBuffer");
+        wbField.setAccessible(true);
+        wbField.set(channel, null);
+
+        ByteBuf dest = Unpooled.buffer(10);
+        channel.read(dest, 0L, 10);
+    }
+
 }
