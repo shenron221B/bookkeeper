@@ -1525,10 +1525,12 @@
               <failWhenNoMutations>false</failWhenNoMutations>
 
               <targetClasses>
-                <param>org.apache.bookkeeper.bookie.BookieImpl</param>
+                <param>org.apache.bookkeeper.bookie.BufferedChannel</param>
+                <param>org.apache.bookkeeper.bookie.EntryMemTable</param>
               </targetClasses>
               <targetTests>
-                <param>org.apache.bookkeeper.bookie.DummyWorkflowTest</param>
+                <param>org.apache.bookkeeper.bookie.BufferedChannelTest</param>
+                <param>org.apache.bookkeeper.bookie.EntryMemTableTest</param>
               </targetTests>
             </configuration>
             <executions>
