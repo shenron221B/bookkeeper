@@ -258,4 +258,31 @@ public class BufferedChannelTest {
         channel.read(dest, 0L, 1);
     }
 
+    // test per mutation testing
+
+    @Test
+    public void T15_testWrite_VerifyPositionUpdate_KillsMutant() throws IOException {
+        BufferedChannel channel = new BufferedChannel(allocator, fileChannelMock, 100, 0L);
+        long initialPos = channel.position();
+
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+        channel.write(data);
+
+        Assert.assertEquals("La posizione deve avanzare dopo la scrittura",
+                initialPos + 10, channel.position());
+    }
+
+    @Test
+    public void T16_testWrite_UnpersistedBytesBound_ExactBoundary_KillsMutant() throws IOException {
+        BufferedChannel specialChannel = new BufferedChannel(allocator, fileChannelMock, 1000, 10L);
+
+        ByteBuf data = Unpooled.buffer(10);
+        data.writeBytes(new byte[10]);
+
+        specialChannel.write(data);
+
+        verify(fileChannelMock, times(1)).write(any(ByteBuffer.class));
+    }
+
 }
