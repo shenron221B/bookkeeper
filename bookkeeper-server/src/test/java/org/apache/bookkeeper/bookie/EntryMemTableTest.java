@@ -102,4 +102,70 @@ public class EntryMemTableTest {
         assertEquals(0, result.getLength());
     }
 
+    // test aggiuntivi (JaCoCo)
+
+    @Test
+    public void T06_testFlush_IOException_Coverage() throws Exception {
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+        memTable.snapshot();
+
+        doThrow(new IOException("Disk Failure")).when(flusher).process(anyLong(), anyLong(), any());
+
+        try {
+            memTable.flush(flusher);
+            fail("Doveva lanciare IOException");
+        } catch (IOException e) {
+        }
+        memTable.addEntry(2L, 2L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+        verify(cacheCallback, atLeastOnce()).onSizeLimitReached(any());
+    }
+
+    @Test
+    public void T07_testAdd_Throttling_Coverage() throws Exception {
+        java.util.concurrent.Semaphore mockSem = mock(java.util.concurrent.Semaphore.class);
+        setField(memTable, "skipListSemaphore", mockSem);
+
+        when(mockSem.tryAcquire(anyInt())).thenReturn(false);
+
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+
+        verify(mockSem).acquireUninterruptibly(anyInt());
+    }
+
+    @Test
+    public void T08_testAdd_InternalFailure_Coverage() throws Exception {
+        SkipListArena mockAlloc = mock(SkipListArena.class);
+        setField(memTable, "allocator", mockAlloc);
+
+        when(mockAlloc.allocateBytes(anyInt())).thenThrow(new RuntimeException("Allocation Boom"));
+
+        try {
+            memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+            fail("Doveva lanciare RuntimeException");
+        } catch (RuntimeException e) {
+            assertEquals("Allocation Boom", e.getMessage());
+        }
+    }
+
+    @Test
+    public void T09_testGet_InternalFailure_Coverage() throws Exception {
+        EntryMemTable.EntrySkipList mockMap = mock(EntryMemTable.EntrySkipList.class);
+        setField(memTable, "kvmap", mockMap);
+
+        when(mockMap.get(any())).thenThrow(new RuntimeException("Map Boom"));
+
+        try {
+            memTable.getEntry(1L, 1L);
+            fail("Doveva lanciare RuntimeException");
+        } catch (RuntimeException e) {
+            assertEquals("Map Boom", e.getMessage());
+        }
+    }
+
+    private void setField(Object target, String fieldName, Object value) throws Exception {
+        java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
 }
