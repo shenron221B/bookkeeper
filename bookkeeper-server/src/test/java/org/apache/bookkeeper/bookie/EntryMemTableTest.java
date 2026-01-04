@@ -314,4 +314,60 @@ public class EntryMemTableTest {
         verify(putStats, times(1)).registerFailedEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
     }
 
+    @Test
+    public void T17_testThrottlingStats_Explicit() throws Exception {
+        StatsLogger mockStatsLogger = mock(StatsLogger.class);
+        org.apache.bookkeeper.stats.OpStatsLogger throttleStats = mock(org.apache.bookkeeper.stats.OpStatsLogger.class);
+        org.apache.bookkeeper.stats.Counter throttleCounter = mock(org.apache.bookkeeper.stats.Counter.class);
+
+        when(mockStatsLogger.getOpStatsLogger(anyString())).thenReturn(throttleStats);
+        when(mockStatsLogger.getCounter(anyString())).thenReturn(throttleCounter);
+
+        memTable = new EntryMemTable(conf, checkpointSource, mockStatsLogger);
+
+        java.util.concurrent.Semaphore mockSem = mock(java.util.concurrent.Semaphore.class);
+        setField(memTable, "skipListSemaphore", mockSem);
+        when(mockSem.tryAcquire(anyInt())).thenReturn(false);
+
+        byte[] data = new byte[10];
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(data), cacheCallback);
+
+        Class<?> timeUnitClass = Class.forName("java.util.concurrent.TimeUnit");
+
+        verify(throttleStats, atLeastOnce()).registerSuccessfulEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+    }
+
+    @Test(timeout = 1000)
+    public void T18_testGetEntry_UnlocksReadLock() throws Exception {
+        memTable.addEntry(1L, 1L, ByteBuffer.wrap(new byte[10]), cacheCallback);
+        memTable.getEntry(1L, 1L);
+        java.lang.reflect.Field lockField = EntryMemTable.class.getDeclaredField("lock");
+        lockField.setAccessible(true);
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                (java.util.concurrent.locks.ReentrantReadWriteLock) lockField.get(memTable);
+
+        assertEquals("ReadLock count deve essere 0 dopo getEntry", 0, lock.getReadHoldCount());
+    }
+
+    @Test
+    public void T19_testGetEntry_FailureStats() throws Exception {
+        StatsLogger mockStatsLogger = mock(StatsLogger.class);
+        org.apache.bookkeeper.stats.OpStatsLogger getStats = mock(org.apache.bookkeeper.stats.OpStatsLogger.class);
+        when(mockStatsLogger.getOpStatsLogger(anyString())).thenReturn(getStats);
+
+        memTable = new EntryMemTable(conf, checkpointSource, mockStatsLogger);
+
+        EntryMemTable.EntrySkipList mockMap = mock(EntryMemTable.EntrySkipList.class);
+        setField(memTable, "kvmap", mockMap);
+        when(mockMap.get(any())).thenThrow(new RuntimeException("Map Error"));
+
+        try {
+            memTable.getEntry(1L, 1L);
+        } catch (RuntimeException e) {
+        }
+
+        Class<?> timeUnitClass = Class.forName("java.util.concurrent.TimeUnit");
+        verify(getStats, times(1)).registerFailedEvent(anyLong(), any(java.util.concurrent.TimeUnit.class));
+    }
+
 }
