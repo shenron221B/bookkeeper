@@ -26,7 +26,7 @@ jobs:
           cache: maven
 
       - name: Build with JaCoCo and Generate Report
-        run: mvn clean verify -P jacoco -Dmaven.test.failure.ignore=true
+        run: mvn clean verify jacoco:report -P jacoco -Dmaven.test.failure.ignore=true -pl bookkeeper-server -am
 
       - name: Upload JaCoCo Code Coverage Report
         uses: actions/upload-artifact@v4
